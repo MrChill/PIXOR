@@ -34,7 +34,7 @@ def build_model(config, device, train=True):
     return net, loss_fn, optimizer, scheduler
 
 
-def eval_batch(config, net, loss_fn, loader, device, eval_range='all'):
+def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False):
     net.eval()
     if config['mGPUs']:
         net.module.set_decode(True)
@@ -72,7 +72,7 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all'):
             predictions = list(torch.split(predictions.cpu(), 1, dim=0))
             batch_size = len(predictions)
             with Pool (processes=3) as pool:
-                preds_filtered = pool.starmap(filter_pred, [(config, pred) for pred in predictions])
+                preds_filtered = pool.starmap(filter_pred(avg), [(config, pred) for pred in predictions])
             t_nms += (time.time() - toc)
             args = []
             for j in range(batch_size):
@@ -279,7 +279,7 @@ def train(exp_name, device):
     print('Finished Training')
 
 
-def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose=False):
+def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose=False, avg=False):
     input, label_map, image_id = loader.dataset[image_id]
     input = input.to(device)
     label_map, label_list = loader.dataset.get_label(image_id)
@@ -301,7 +301,7 @@ def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose
 
     # Filter Predictions
     t_start = time.time()
-    corners, scores = filter_pred(config, pred)
+    corners, scores = filter_pred(config, pred, avg)
     t_post = time.time() - t_start
 
     if verbose:
@@ -325,7 +325,7 @@ def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose
     return num_gt, num_pred, scores, pred_image, pred_match, loss.item(), t_forward, t_post
 
 
-def experiment(exp_name, device, eval_range='all', plot=True):
+def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
     config, _, _, _ = load_config(exp_name)
     net, loss_fn = build_model(config, device, train=False)
     state_dict = torch.load(get_model_name(config), map_location=device)
@@ -337,14 +337,18 @@ def experiment(exp_name, device, eval_range='all', plot=True):
                                                frame_range=config['frame_range'])
 
     #Train Set
-    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range)
+    if avg is True:
+        print('Average Mode')
+    else:
+        print('NMS Mode')
+    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range, avg)
     print("Training mAP", train_metrics['AP'])
     fig_name = "PRCurve_train_" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(train_metrics['AP'])
     plot_pr_curve(train_precisions, train_recalls, legend, name=fig_name)
 
     # Val Set
-    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range)
+    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, avg)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
@@ -355,7 +359,7 @@ def experiment(exp_name, device, eval_range='all', plot=True):
     plot_pr_curve(val_precisions, val_recalls, legend, name=fig_name)
 
 
-def test(exp_name, device, image_id):
+def test(exp_name, device, image_id, avg):
     config, _, _, _ = load_config(exp_name)
     net, loss_fn = build_model(config, device, train=False)
     net.load_state_dict(torch.load(get_model_name(config), map_location=device))
@@ -366,9 +370,13 @@ def test(exp_name, device, image_id):
 
     with torch.no_grad():
         num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms = \
-            eval_one(net, loss_fn, config, train_loader, image_id, device, plot=True)
+            eval_one(net, loss_fn, config, train_loader, image_id, device, plot=True, avg=False)
 
         TP = (pred_match != -1).sum()
+        if avg is True:
+            print('Average Mode')
+        else:
+            print('NMS Mode')
         print("Loss: {:.4f}".format(loss))
         print("Precision: {:.2f}".format(TP/num_pred))
         print("Recall: {:.2f}".format(TP/num_gt))
@@ -396,8 +404,9 @@ if __name__ == "__main__":
     if args.mode=='val':
         if args.eval_range is None:
             args.eval_range='all'
-        experiment(args.name, device, eval_range=args.eval_range, plot=False)
+        experiment(args.name, device, eval_range=args.eval_range, plot=False, avg=False)
+        experiment(args.name, device, eval_range=args.eval_range, plot=False, avg=True)
     if args.mode=='test':
-        test(args.name, device, image_id=args.test_id)
+        test(args.name, device, image_id=args.test_id, avg=True)
 
     # before launching the program! CUDA_VISIBLE_DEVICES=0, 1 python main.py .......

@@ -3,7 +3,7 @@ import torch.nn
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-plt.switch_backend('agg')
+#plt.switch_backend('agg')
 import math
 import json
 import os
@@ -99,7 +99,7 @@ def plot_bev(velo_array, label_list = None, scores = None, window_name='GT', sav
         cv2.waitKey(0)
     else:
         cv2.imshow(window_name, intensity)
-        cv2.waitKey(3)
+        cv2.waitKey(0)
 
     return intensity
 

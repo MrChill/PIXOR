@@ -69,6 +69,44 @@ def compute_recall(pred_boxes, gt_boxes, iou):
     recall = len(set(matched_gt_boxes)) / gt_boxes.shape[0]
     return recall, positive_ids
 
+def average(boxes, scores, threshold):
+    """Performs average and returns indices of kept boxes.
+    boxes: [N, (y1, x1, y2, x2)]. Notice that (y2, x2) lays outside the box.
+    scores: 1-D array of box scores.
+    threshold: Float. IoU threshold to use for filtering.
+
+    return an numpy array of the positions of picks
+    """
+    assert boxes.shape[0] > 0
+    if boxes.dtype.kind != "f":
+        boxes = boxes.astype(np.float32)
+
+    polygons = convert_format(boxes)
+
+    top = 64
+    # Get indicies of boxes sorted by scores (highest first)
+    ixs = scores.argsort()[::-1][:64]
+
+    pick = []
+    while len(ixs) > 0:
+        # Pick top box and add its index to the list
+        i = ixs[0]
+        #pick.append(i)
+        # Compute IoU of the picked box with the rest
+        iou = compute_iou(polygons[i], polygons[ixs[1:]])
+        # Identify boxes with IoU over the threshold. This
+        # returns indices into ixs[1:], so add 1 to get
+        # indices into ixs.
+        remove_ixs = np.where(iou > threshold)[0] + 1
+        #store all iou partners for average
+        i_iou_ids = np.append(ixs[remove_ixs],ixs[0])
+        pick.append(i_iou_ids)
+        # Remove indices of the picked and overlapped boxes.
+        ixs = np.delete(ixs, remove_ixs)
+        ixs = np.delete(ixs, 0)
+
+    return pick
+
 def non_max_suppression(boxes, scores, threshold):
     """Performs non-maximum suppression and returns indices of kept boxes.
     boxes: [N, (y1, x1, y2, x2)]. Notice that (y2, x2) lays outside the box.
@@ -104,7 +142,7 @@ def non_max_suppression(boxes, scores, threshold):
 
     return np.array(pick, dtype=np.int32)
 
-def filter_pred(config, pred):
+def filter_pred(config, pred, avg):
     if len(pred.size()) == 4:
         if pred.size(0) == 1:
             pred.squeeze_(0)
@@ -126,11 +164,25 @@ def filter_pred(config, pred):
     scores = torch.masked_select(cls_pred, activation).cpu().numpy()
 
     # NMS
-    selected_ids = non_max_suppression(corners, scores, config['nms_iou_threshold'])
-    corners = corners[selected_ids]
-    scores = scores[selected_ids]
+    if avg is True:
+        selected_ids = average(corners, scores, config['nms_iou_threshold'])
+    else:
+        selected_ids = non_max_suppression(corners, scores, config['nms_iou_threshold'])
 
-    return corners, scores
+    full_corner = []
+    full_score = []
+    if avg is True:
+        for i in range(0, len(selected_ids)-1):
+            corner = corners[selected_ids[i]].mean(axis=0)
+            full_corner.append(corner)
+            score = scores[selected_ids[i]].mean(axis=0)
+            full_score.append(score)
+        corners_array = np.asarray(full_corner)
+        scores_array = np.asarray(full_score)
+    else:
+        corners_array = corners[selected_ids]
+        scores_array = scores[selected_ids]
+    return corners_array, scores_array
 
 
 def compute_ap_range(gt_box, gt_class_id,
