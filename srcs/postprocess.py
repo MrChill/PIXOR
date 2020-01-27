@@ -83,9 +83,9 @@ def average(boxes, scores, threshold):
 
     polygons = convert_format(boxes)
 
-    top = 64
+    #top = 200
     # Get indicies of boxes sorted by scores (highest first)
-    ixs = scores.argsort()[::-1][:64]
+    ixs = scores.argsort()[::-1][:]
 
     pick = []
     while len(ixs) > 0:
@@ -99,8 +99,9 @@ def average(boxes, scores, threshold):
         # indices into ixs.
         remove_ixs = np.where(iou > threshold)[0] + 1
         #store all iou partners for average
-        i_iou_ids = np.append(ixs[remove_ixs],ixs[0])
-        pick.append(i_iou_ids)
+        i_iou_ids = np.array(ixs[remove_ixs],ixs[0])
+        if len(i_iou_ids) > 10:
+            pick.append(i_iou_ids)
         # Remove indices of the picked and overlapped boxes.
         ixs = np.delete(ixs, remove_ixs)
         ixs = np.delete(ixs, 0)
@@ -172,13 +173,13 @@ def filter_pred(config, pred, avg):
     full_corner = []
     full_score = []
     if avg is True:
-        for i in range(0, len(selected_ids)-1):
-            corner = corners[selected_ids[i]].mean(axis=0)
+        for obj in selected_ids:
+            corner = np.average(corners[obj], axis=0, weights=scores[obj])
             full_corner.append(corner)
-            score = scores[selected_ids[i]].mean(axis=0)
+            score = np.average(scores[obj], axis=0)
             full_score.append(score)
-        corners_array = np.asarray(full_corner)
-        scores_array = np.asarray(full_score)
+        corners_array = np.array(full_corner)
+        scores_array = np.array(full_score)
     else:
         corners_array = corners[selected_ids]
         scores_array = scores[selected_ids]

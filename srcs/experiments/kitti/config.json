@@ -19,7 +19,7 @@
   "mGPUs": false,
   "frame_range": 10000,
 
-  "cls_threshold": 0.05,
+  "cls_threshold": 0.5,
   "nms_iou_threshold": 0.1,
   "nms_top": 128,
 

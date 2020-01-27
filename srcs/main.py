@@ -9,7 +9,7 @@ from torch.multiprocessing import Pool
 from loss import CustomLoss
 from datagen import get_data_loader
 from model import PIXOR
-from utils import get_model_name, load_config, get_logger, plot_bev, plot_label_map, plot_pr_curve, get_bev
+from utils import get_model_name, load_config, get_logger, plot_bev, plot_label_map, plot_pr_curve, get_bev, save_bev
 from postprocess import filter_pred, compute_matches, compute_ap
 
 
@@ -72,7 +72,7 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
             predictions = list(torch.split(predictions.cpu(), 1, dim=0))
             batch_size = len(predictions)
             with Pool (processes=3) as pool:
-                preds_filtered = pool.starmap(filter_pred(avg), [(config, pred) for pred in predictions])
+                preds_filtered = pool.starmap(filter_pred, [(config, pred, avg) for pred in predictions])
             t_nms += (time.time() - toc)
             args = []
             for j in range(batch_size):
@@ -320,6 +320,7 @@ def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose
         # Visualization
         plot_bev(input_np, label_list, window_name='GT')
         plot_bev(input_np, corners, window_name='Prediction')
+        save_bev(input_np, label_list, corners, window_name='Detections', save_path='images/image.png')
         plot_label_map(cls_pred.numpy())
 
     return num_gt, num_pred, scores, pred_image, pred_match, loss.item(), t_forward, t_post
@@ -370,7 +371,7 @@ def test(exp_name, device, image_id, avg):
 
     with torch.no_grad():
         num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms = \
-            eval_one(net, loss_fn, config, train_loader, image_id, device, plot=True, avg=False)
+            eval_one(net, loss_fn, config, train_loader, image_id, device, plot=True, avg=avg)
 
         TP = (pred_match != -1).sum()
         if avg is True:
