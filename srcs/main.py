@@ -89,7 +89,7 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
                 arg = (np.array(label_list), corners, scores)
                 args.append(arg)
 
-            # Parallel compute matchesi
+            # Parallel compute matches
             
             with Pool (processes=3) as pool:
                 matches = pool.starmap(compute_matches, args)
@@ -342,20 +342,41 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
         print('Average Mode')
     else:
         print('NMS Mode')
-    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range, avg)
+    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range, False)
     print("Training mAP", train_metrics['AP'])
-    fig_name = "PRCurve_train_" + config['name']
+    fig_name = "PRCurve_train_nms" + config['name']
+    legend = "AP={:.1%} @IOU=0.5".format(train_metrics['AP'])
+    plot_pr_curve(train_precisions, train_recalls, legend, name=fig_name)
+
+    #Train Set
+    print('Average Mode')
+    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range, True)
+    print("Training mAP", train_metrics['AP'])
+    fig_name = "PRCurve_train_avg" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(train_metrics['AP'])
     plot_pr_curve(train_precisions, train_recalls, legend, name=fig_name)
 
     # Val Set
-    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, avg)
+    print('NMS Mode')
+    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, False)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
     print("Nms Time on average {:.4f}s".format(val_metrics['Postprocess Time']))
 
-    fig_name = "PRCurve_val_" + config['name']
+    fig_name = "PRCurve_val_nms" + config['name']
+    legend = "AP={:.1%} @IOU=0.5".format(val_metrics['AP'])
+    plot_pr_curve(val_precisions, val_recalls, legend, name=fig_name)
+
+    # Val Set Average
+    print('Average Mode')
+    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
+
+    print("Validation mAP", val_metrics['AP'])
+    print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
+    print("Nms Time on average {:.4f}s".format(val_metrics['Postprocess Time']))
+
+    fig_name = "PRCurve_val_avg" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(val_metrics['AP'])
     plot_pr_curve(val_precisions, val_recalls, legend, name=fig_name)
 
@@ -405,9 +426,9 @@ if __name__ == "__main__":
     if args.mode=='val':
         if args.eval_range is None:
             args.eval_range='all'
-        experiment(args.name, device, eval_range=args.eval_range, plot=False, avg=False)
-        experiment(args.name, device, eval_range=args.eval_range, plot=False, avg=True)
+        experiment(args.name, device, eval_range=args.eval_range, plot=True, avg=False)
     if args.mode=='test':
         test(args.name, device, image_id=args.test_id, avg=True)
+        test(args.name, device, image_id=args.test_id, avg=False)
 
     # before launching the program! CUDA_VISIBLE_DEVICES=0, 1 python main.py .......
