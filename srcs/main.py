@@ -380,6 +380,60 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
     legend = "AP={:.1%} @IOU=0.5".format(val_metrics['AP'])
     plot_pr_curve(val_precisions, val_recalls, legend, name=fig_name)
 
+def evaluate(exp_name, device, eval_range='all', plot=True):
+    config, _, _, _ = load_config(exp_name)
+    net, loss_fn = build_model(config, device, train=False)
+    state_dict = torch.load(get_model_name(config), map_location=device)
+    if config['mGPUs']:
+        net.module.load_state_dict(state_dict)
+    else:
+        net.load_state_dict(state_dict)
+    train_loader, val_loader = get_data_loader(config['batch_size'], config['use_npy'], geometry=config['geometry'],
+                                               frame_range=config['frame_range'])
+    '''
+    # Train Set
+    print('NMS Mode')
+    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device,
+                                                                   eval_range, False)
+    print("Training mAP", train_metrics['AP'])
+    fig_name = "PRCurve_train_nms" + config['name']
+    legend = "AP={:.1%} @IOU=0.5".format(train_metrics['AP'])
+    plot_pr_curve(train_precisions, train_recalls, legend, name=fig_name)
+
+    # Train Set Average
+    print('Average Mode')
+    train_metrics_avg, train_precisions_avg, train_recalls_avg, _ = eval_batch(config, net, loss_fn, train_loader, device,
+                                                                   eval_range, True)
+    print("Training mAP", train_metrics['AP'])
+    fig_name = "PRCurve_train_avg" + config['name']
+    legend = "AP={:.1%} @IOU=0.5".format(train_metrics_avg['AP'])
+    plot_pr_curve(train_precisions_avg, train_recalls_avg, legend, name=fig_name)
+    '''
+    # Val Set
+    print('NMS Mode')
+    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range,
+                                                             False)
+
+    print("Validation mAP", val_metrics['AP'])
+    print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
+    print("Nms Time on average {:.4f}s".format(val_metrics['Postprocess Time']))
+
+    fig_name = "PRCurve_val_nms" + config['name']
+    legend = "AP={:.1%} @IOU=0.5".format(val_metrics['AP'])
+    plot_pr_curve(val_precisions, val_recalls, legend, name=fig_name)
+
+    # Val Set Average
+    print('Average Mode')
+    val_metrics_avg, val_precisions_avg, val_recalls_avg, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
+
+    print("Validation mAP", val_metrics_avg['AP'])
+    print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics_avg['Forward Pass Time']))
+    print("Nms Time on average {:.4f}s".format(val_metrics_avg['Postprocess Time']))
+
+    fig_name = "PRCurve_val_avg" + config['name']
+    legend = "AP={:.1%} @IOU=0.5".format(val_metrics_avg['AP'])
+    plot_pr_curve(val_precisions_avg, val_recalls_avg, legend, name=fig_name)
+
 
 def test(exp_name, device, image_id, avg):
     config, _, _, _ = load_config(exp_name)
@@ -408,7 +462,7 @@ def test(exp_name, device, image_id, avg):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='PIXOR custom implementation')
-    parser.add_argument('mode', choices=['train', 'val', 'test'], help='name of the experiment')
+    parser.add_argument('mode', choices=['train', 'val', 'test', 'eval'], help='name of the experiment')
     parser.add_argument('--name', required=True, help="name of the experiment")
     parser.add_argument('--device', default='cpu', help='device to train on')
     parser.add_argument('--eval_range', type=int, help="range of evaluation")
@@ -430,5 +484,6 @@ if __name__ == "__main__":
     if args.mode=='test':
         test(args.name, device, image_id=args.test_id, avg=True)
         test(args.name, device, image_id=args.test_id, avg=False)
-
+    if args.mode == 'eval':
+        evaluate(args.name, device, eval_range=args.eval_range, plot=True)
     # before launching the program! CUDA_VISIBLE_DEVICES=0, 1 python main.py .......

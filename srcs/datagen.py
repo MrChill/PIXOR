@@ -75,14 +75,15 @@ class KITTI(Dataset):
             lines = f.readlines() # get rid of \n symbol
             names = []
             for line in lines[:-1]:
-                if int(line[:-1]) < self.frame_range:
+                if len(names) <= self.frame_range:
                     names.append(line[:-1])
+                else: break
 
             # Last line does not have a \n symbol
             last = lines[-1][:6]
             if int(last) < self.frame_range:
                 names.append(last)
-            # print(names[-1])
+            print(names)
             print("There are {} images in txt file".format(len(names)))
 
             return names

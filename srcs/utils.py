@@ -172,8 +172,8 @@ def plot_pr_curve(precisions, recalls, legend, name='PRCurve'):
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
     ax.legend([legend], loc='upper right')
-    #path = os.path.join("../", name)
-    path = os.path.join("/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG", name)
+    path = os.path.join("../evaluation", name)
+    #path = os.path.join("/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG", name)
     fig.savefig(path)
     print("PR Curve saved at", path)
 
