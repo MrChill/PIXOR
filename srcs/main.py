@@ -45,6 +45,7 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
     loc_loss = 0
     all_scores = []
     all_matches = []
+    all_overlaps = []
     log_images = []
     gts = 0
     preds = 0
@@ -96,15 +97,27 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
             
             for j in range(batch_size):
                 all_matches.extend(list(matches[j][1]))
+                all_overlaps.extend(list(matches[j][2]))
             
             #print(time.time() -tic)
     all_scores = np.array(all_scores)
     all_matches = np.array(all_matches)
+    all_overlaps = np.array(all_matches)
     sort_ids = np.argsort(all_scores)
     all_matches = all_matches[sort_ids[::-1]]
 
     metrics = {}
     AP, precisions, recalls, precision, recall = compute_ap(all_matches, gts, preds)
+
+    overlaps_value = []
+    for i in all_overlaps:
+        for x in i:
+            if x > 0:
+                overlaps_value.append(x)
+
+    iou_mean = np.mean(overlaps_value)
+    iou_var = np.var(overlaps_value)
+
     metrics['AP'] = AP
     metrics['Precision'] = precision
     metrics['Recall'] = recall
@@ -311,6 +324,15 @@ def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose
     gt_match, pred_match, overlaps = compute_matches(gt_boxes,
                                         corners, scores, iou_threshold=0.5)
 
+    overlaps_value = []
+    for i in overlaps:
+        for x in i:
+            if x > 0:
+                overlaps_value.append(x)
+
+    iou_mean = np.mean(overlaps_value)
+    iou_var = np.var(overlaps_value)
+
     num_gt = len(label_list)
     num_pred = len(scores)
     input_np = input.cpu().permute(1, 2, 0).numpy()
@@ -323,7 +345,7 @@ def eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose
         save_bev(input_np, label_list, corners, window_name='Detections', save_path='images/image.png')
         plot_label_map(cls_pred.numpy())
 
-    return num_gt, num_pred, scores, pred_image, pred_match, loss.item(), t_forward, t_post
+    return num_gt, num_pred, scores, pred_image, pred_match, loss.item(), t_forward, t_post, iou_mean, iou_var
 
 
 def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
@@ -445,7 +467,7 @@ def test(exp_name, device, image_id, avg):
     net.eval()
 
     with torch.no_grad():
-        num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms = \
+        num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms, iou_mean, iou_var = \
             eval_one(net, loss_fn, config, train_loader, image_id, device, plot=True, avg=avg)
 
         TP = (pred_match != -1).sum()
@@ -458,6 +480,8 @@ def test(exp_name, device, image_id, avg):
         print("Recall: {:.2f}".format(TP/num_gt))
         print("forward pass time {:.3f}s".format(t_forward))
         print("nms time {:.3f}s".format(t_nms))
+        print("iou_mean = ", iou_mean)
+        print("iou_var = ", iou_var)
 
 if __name__ == "__main__":
 
@@ -480,10 +504,10 @@ if __name__ == "__main__":
     if args.mode=='val':
         if args.eval_range is None:
             args.eval_range='all'
-        experiment(args.name, device, eval_range=args.eval_range, plot=True, avg=False)
+        experiment(args.name, device, eval_range=args.eval_range, plot=False, avg=False)
     if args.mode=='test':
         test(args.name, device, image_id=args.test_id, avg=True)
         test(args.name, device, image_id=args.test_id, avg=False)
     if args.mode == 'eval':
-        evaluate(args.name, device, eval_range=args.eval_range, plot=True)
+        evaluate(args.name, device, eval_range=args.eval_range, plot=False)
     # before launching the program! CUDA_VISIBLE_DEVICES=0, 1 python main.py .......
