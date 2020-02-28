@@ -4,6 +4,8 @@ import numpy as np
 import time
 import argparse
 import random
+import matplotlib.pyplot as plt
+import os
 from torch.multiprocessing import Pool
 
 from loss import CustomLoss
@@ -128,7 +130,7 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
     loc_loss = loc_loss / len(loader)
     metrics['loss'] = cls_loss + loc_loss
 
-    return metrics, precisions, recalls, log_images
+    return metrics, precisions, recalls, log_images, iou_mean, iou_var
 
 
 def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
@@ -433,12 +435,23 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
     '''
     # Val Set
     print('NMS Mode')
-    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range,
+    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_batch(config, net, loss_fn, val_loader, device, eval_range,
                                                              False)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
     print("Nms Time on average {:.4f}s".format(val_metrics['Postprocess Time']))
+
+    # data logger for colab
+    log_path = "/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG/logger.txt"
+    text_file = open(log_path, "a")
+    n = text_file.write('Non Maximum Suppression Mode \n')
+    n = text_file.write("AVG Validation mAP: " + str(val_metrics['AP']) + "\n")
+    n = text_file.write("AVG Net Fwd Pass Time on average: " + str(val_metrics['Forward Pass Time']) + "\n")
+    n = text_file.write("AVG Nms Time on average: " + str(val_metrics['Postprocess Time']) + "\n")
+    n = text_file.write("AVG IOU mean: " + str(nms_iou_mean) + "\n")
+    n = text_file.write("AVG IOU var: " + str(nms_iou_var) + "\n")
+    text_file.close()
 
     fig_name = "PRCurve_val_nms" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(val_metrics['AP'])
@@ -446,15 +459,49 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
 
     # Val Set Average
     print('Average Mode')
-    val_metrics_avg, val_precisions_avg, val_recalls_avg, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
+    val_metrics_avg, val_precisions_avg, val_recalls_avg, _, avg_iou_mean, avg_iou_var = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
 
-    print("Validation mAP", val_metrics_avg['AP'])
-    print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics_avg['Forward Pass Time']))
-    print("Nms Time on average {:.4f}s".format(val_metrics_avg['Postprocess Time']))
+    print("AVG Validation mAP", val_metrics_avg['AP'])
+    print("AVG Net Fwd Pass Time on average {:.4f}s".format(val_metrics_avg['Forward Pass Time']))
+    print("AVG Nms Time on average {:.4f}s".format(val_metrics_avg['Postprocess Time']))
+
+    # data logger for colab
+    text_file = open(log_path, "a")
+    n = text_file.write('Average Mode \n')
+    n = text_file.write("AVG Validation mAP: " + str(val_metrics_avg['AP']) + "\n")
+    n = text_file.write("AVG Net Fwd Pass Time on average: " + str(val_metrics_avg['Forward Pass Time']) + "\n")
+    n = text_file.write("AVG Nms Time on average: " + str(val_metrics_avg['Postprocess Time']) + "\n")
+    n = text_file.write("AVG IOU mean: " + str(avg_iou_mean) + "\n")
+    n = text_file.write("AVG IOU var: " + str(avg_iou_var) + "\n")
+    text_file.close()
 
     fig_name = "PRCurve_val_avg" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(val_metrics_avg['AP'])
     plot_pr_curve(val_precisions_avg, val_recalls_avg, legend, name=fig_name)
+
+    # plotting the IOU of NMS and AVG
+    labels = ['NMS', 'AVG']
+    x_pos = np.arange(len(labels))
+    CTEs = [nms_iou_mean, avg_iou_mean]
+    error = [nms_iou_var, avg_iou_var]
+
+    fig, ax = plt.subplots()
+    ax.bar(x_pos, CTEs,
+           yerr=error,
+           align='center',
+           alpha=0.5,
+           color=['blue', 'orange'],
+           capsize=10)
+    ax.set_ylabel("IOU - GT to Prediction")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels)
+    ax.set_title("Comparison of NMS and AVG")
+    ax.yaxis.grid(True)
+
+    # Save the figure and show
+    plt.tight_layout()
+    path = "/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG/nms_vs_avg_iou.png"
+    plt.savefig(path)
 
 
 def test(exp_name, device, image_id, avg):
