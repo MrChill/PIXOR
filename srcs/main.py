@@ -92,19 +92,19 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
                 arg = (np.array(label_list), corners, scores)
                 args.append(arg)
 
+
             # Parallel compute matches
-            
             with Pool (processes=3) as pool:
                 matches = pool.starmap(compute_matches, args)
             
             for j in range(batch_size):
                 all_matches.extend(list(matches[j][1]))
                 all_overlaps.extend(list(matches[j][2]))
-            
+
             #print(time.time() -tic)
     all_scores = np.array(all_scores)
     all_matches = np.array(all_matches)
-    all_overlaps = np.array(all_matches)
+    all_overlaps = np.array(all_overlaps)
     sort_ids = np.argsort(all_scores)
     all_matches = all_matches[sort_ids[::-1]]
 
@@ -155,18 +155,22 @@ def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
     preds = 0
     all_scores = []
     all_matches = []
+    all_iou_mean = []
+    all_iou_var = []
     log_images = []
 
     with torch.no_grad():
         for image_id in img_list:
             #tic = time.time()
-            num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms = \
+            num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms, iou_mean, iou_var = \
                 eval_one(net, loss_fn, config, loader, image_id, device, plot=False)
             gts += num_gt
             preds += num_pred
             loss_sum += loss
             all_scores.extend(list(scores))
             all_matches.extend(list(pred_match))
+            all_iou_mean.append(iou_mean)
+            all_iou_var.append(iou_var)
 
             t_fwds += t_forward
             t_post += t_nms
@@ -177,6 +181,8 @@ def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
             
     all_scores = np.array(all_scores)
     all_matches = np.array(all_matches)
+    all_iou_mean = np.array(all_iou_mean)
+    all_iou_var = np.array(all_iou_var)
     sort_ids = np.argsort(all_scores)
     all_matches = all_matches[sort_ids[::-1]]
 
@@ -189,7 +195,10 @@ def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
     metrics['Forward Pass Time'] = t_fwds / len(img_list)
     metrics['Postprocess Time'] = t_post / len(img_list)
 
-    return metrics, precisions, recalls, log_images
+    iou_mean = np.mean(all_iou_mean)
+    iou_var = np.var(all_iou_var)
+
+    return metrics, precisions, recalls, log_images, iou_mean, iou_var
 
 
 def train(exp_name, device):
@@ -435,8 +444,7 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
     '''
     # Val Set
     print('NMS Mode')
-    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_batch(config, net, loss_fn, val_loader, device, eval_range,
-                                                             False)
+    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range,)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
@@ -459,7 +467,7 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
 
     # Val Set Average
     print('Average Mode')
-    val_metrics_avg, val_precisions_avg, val_recalls_avg, _, avg_iou_mean, avg_iou_var = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
+    val_metrics_avg, val_precisions_avg, val_recalls_avg, _, avg_iou_mean, avg_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range)
 
     print("AVG Validation mAP", val_metrics_avg['AP'])
     print("AVG Net Fwd Pass Time on average {:.4f}s".format(val_metrics_avg['Forward Pass Time']))
