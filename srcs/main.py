@@ -195,8 +195,8 @@ def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
     metrics['Forward Pass Time'] = t_fwds / len(img_list)
     metrics['Postprocess Time'] = t_post / len(img_list)
 
-    iou_mean = np.mean(all_iou_mean)
-    iou_var = np.var(all_iou_var)
+    iou_mean = np.nanmean(all_iou_mean)
+    iou_var = np.nanvar(all_iou_var)
 
     return metrics, precisions, recalls, log_images, iou_mean, iou_var
 
@@ -375,7 +375,7 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
         print('Average Mode')
     else:
         print('NMS Mode')
-    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range, False)
+    train_metrics, train_precisions, train_recalls, _, iou_mean, iou_var = eval_batch(config, net, loss_fn, train_loader, device, eval_range, False)
     print("Training mAP", train_metrics['AP'])
     fig_name = "PRCurve_train_nms" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(train_metrics['AP'])
@@ -383,7 +383,7 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
 
     #Train Set
     print('Average Mode')
-    train_metrics, train_precisions, train_recalls, _ = eval_batch(config, net, loss_fn, train_loader, device, eval_range, True)
+    train_metrics, train_precisions, train_recalls, _, iou_mean, iou_var = eval_batch(config, net, loss_fn, train_loader, device, eval_range, True)
     print("Training mAP", train_metrics['AP'])
     fig_name = "PRCurve_train_avg" + config['name']
     legend = "AP={:.1%} @IOU=0.5".format(train_metrics['AP'])
@@ -391,7 +391,7 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
 
     # Val Set
     print('NMS Mode')
-    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, False)
+    val_metrics, val_precisions, val_recalls, _, iou_mean, iou_var = eval_batch(config, net, loss_fn, val_loader, device, eval_range, False)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
@@ -403,7 +403,7 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
 
     # Val Set Average
     print('Average Mode')
-    val_metrics, val_precisions, val_recalls, _ = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
+    val_metrics, val_precisions, val_recalls, _, iou_mean, iou_var = eval_batch(config, net, loss_fn, val_loader, device, eval_range, True)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
@@ -444,7 +444,7 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
     '''
     # Val Set
     print('NMS Mode')
-    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range,)
+    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
@@ -562,7 +562,7 @@ if __name__ == "__main__":
         experiment(args.name, device, eval_range=args.eval_range, plot=False, avg=False)
     if args.mode=='test':
         test(args.name, device, image_id=args.test_id, avg=True)
-        test(args.name, device, image_id=args.test_id, avg=False)
+        #test(args.name, device, image_id=args.test_id, avg=False)
     if args.mode == 'eval':
-        evaluate(args.name, device, eval_range=args.eval_range, plot=False)
+        evaluate(args.name, device, eval_range='all', plot=False)
     # before launching the program! CUDA_VISIBLE_DEVICES=0, 1 python main.py .......
