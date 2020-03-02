@@ -133,7 +133,7 @@ def eval_batch(config, net, loss_fn, loader, device, eval_range='all', avg=False
     return metrics, precisions, recalls, log_images, iou_mean, iou_var
 
 
-def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
+def eval_dataset(config, net, loss_fn, loader, device, e_range, avg):
     net.eval()
     if config['mGPUs']:
         net.module.set_decode(True)
@@ -145,6 +145,8 @@ def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
     loss_sum = 0
 
     img_list = range(len(loader.dataset))
+    #img_list = random.sample(img_list, 10)
+
     if e_range != 'all':
         e_range = min(e_range, len(loader.dataset))
         img_list = random.sample(img_list, e_range)
@@ -163,7 +165,7 @@ def eval_dataset(config, net, loss_fn, loader, device, e_range='all'):
         for image_id in img_list:
             #tic = time.time()
             num_gt, num_pred, scores, pred_image, pred_match, loss, t_forward, t_nms, iou_mean, iou_var = \
-                eval_one(net, loss_fn, config, loader, image_id, device, plot=False)
+                eval_one(net, loss_fn, config, loader, image_id, device, plot=False, verbose=False, avg=avg)
             gts += num_gt
             preds += num_pred
             loss_sum += loss
@@ -284,7 +286,7 @@ def train(exp_name, device):
         # Run Validation
         if (epoch +1) % 2 == 0:
             tic = time.time()
-            val_metrics, _, _, log_images = eval_batch(config, net, loss_fn, test_data_loader, device)
+            val_metrics, _, _, log_images, iou_mean, iou_var = eval_batch(config, net, loss_fn, test_data_loader, device)
             for tag, value in val_metrics.items():
                 val_logger.scalar_summary(tag, value, epoch + 1)
             val_logger.image_summary('Predictions', log_images, epoch + 1)
@@ -413,7 +415,7 @@ def experiment(exp_name, device, eval_range='all', plot=True, avg=False):
     legend = "AP={:.1%} @IOU=0.5".format(val_metrics['AP'])
     plot_pr_curve(val_precisions, val_recalls, legend, name=fig_name)
 
-def evaluate(exp_name, device, eval_range='all', plot=True):
+def evaluate(exp_name, device, eval_range='all', plot=False):
     config, _, _, _ = load_config(exp_name)
     net, loss_fn = build_model(config, device, train=False)
     state_dict = torch.load(get_model_name(config), map_location=device)
@@ -444,7 +446,7 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
     '''
     # Val Set
     print('NMS Mode')
-    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range)
+    val_metrics, val_precisions, val_recalls, _, nms_iou_mean, nms_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range, avg=False)
 
     print("Validation mAP", val_metrics['AP'])
     print("Net Fwd Pass Time on average {:.4f}s".format(val_metrics['Forward Pass Time']))
@@ -452,7 +454,8 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
 
     # data logger for colab
     log_path = "/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG/logger.txt"
-    text_file = open(log_path, "a")
+    #log_path = "../evaluation/logger.txt"
+    text_file = open(log_path, "w")
     n = text_file.write('Non Maximum Suppression Mode \n')
     n = text_file.write("AVG Validation mAP: " + str(val_metrics['AP']) + "\n")
     n = text_file.write("AVG Net Fwd Pass Time on average: " + str(val_metrics['Forward Pass Time']) + "\n")
@@ -467,13 +470,15 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
 
     # Val Set Average
     print('Average Mode')
-    val_metrics_avg, val_precisions_avg, val_recalls_avg, _, avg_iou_mean, avg_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range)
+    val_metrics_avg, val_precisions_avg, val_recalls_avg, _, avg_iou_mean, avg_iou_var = eval_dataset(config, net, loss_fn, val_loader, device, eval_range, avg=True)
 
     print("AVG Validation mAP", val_metrics_avg['AP'])
     print("AVG Net Fwd Pass Time on average {:.4f}s".format(val_metrics_avg['Forward Pass Time']))
     print("AVG Nms Time on average {:.4f}s".format(val_metrics_avg['Postprocess Time']))
 
     # data logger for colab
+    log_path = "/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG/logger.txt"
+    #log_path = "../evaluation/logger.txt"
     text_file = open(log_path, "a")
     n = text_file.write('Average Mode \n')
     n = text_file.write("AVG Validation mAP: " + str(val_metrics_avg['AP']) + "\n")
@@ -509,6 +514,7 @@ def evaluate(exp_name, device, eval_range='all', plot=True):
     # Save the figure and show
     plt.tight_layout()
     path = "/content/drive/My Drive/network/experiments/kitti/Figures/weightedAVG/nms_vs_avg_iou.png"
+    #path = "../evaluation/nms_vs_avg_iou.png"
     plt.savefig(path)
 
 
